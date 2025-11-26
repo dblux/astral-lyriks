@@ -2,15 +2,16 @@ import json
 import requests
 import time
 import pprint
+import aiohttp
+import asyncio
 
 
-def get_isoforms(uniprot_id):
+async def _get_isoform(session, uniprot_id):
     url = f"https://rest.uniprot.org/uniprotkb/{uniprot_id}.json"
-    r = requests.get(url)
-    if r.status_code != 200:
-        print(f"[{uniprot_id}] Failed with status {r.status_code}")
-        return None
-    data = r.json()
+    async with session.get(url) as r:
+        data = await r.json()
+    print(f"Retrieved isoforms for {uniprot_id}...")
+    # Extract information
     result = {}
     # Canonical sequence
     result["canonical"] = {
@@ -29,7 +30,51 @@ def get_isoforms(uniprot_id):
                 }
                 isoforms.append(entry)
     result["isoforms"] = isoforms
-    return result
+    return result 
+
+
+async def get_isoforms_async(uniprot_ids):
+    if isinstance(uniprot_ids, str):
+        uniprot_ids = [uniprot_ids]
+    async with aiohttp.ClientSession() as s:
+        tasks = [_get_isoform(s, uniprot_id) for uniprot_id in uniprot_ids]
+        return await asyncio.gather(*tasks)
+
+
+def get_isoforms(uniprot_ids):
+    if isinstance(uniprot_ids, str):
+        uniprot_ids = [uniprot_ids]
+
+    results = []
+    for uniprot_id in uniprot_ids:
+        print(f"Retrieving isoforms for {uniprot_id}...")
+        url = f"https://rest.uniprot.org/uniprotkb/{uniprot_id}.json"
+        r = requests.get(url)
+        if r.status_code != 200:
+            print(f"[{uniprot_id}] Failed with status {r.status_code}")
+            return None
+        data = r.json()
+        result = {}
+        # Canonical sequence
+        result["canonical"] = {
+            "sequence": data["sequence"]["value"],
+            "length": data["sequence"]["length"]
+        }
+        # Isoforms
+        isoforms = []
+        for comment in data.get("comments", []):
+            if comment.get("commentType") == "ALTERNATIVE PRODUCTS":
+                for iso in comment.get("isoforms", []):
+                    entry = {
+                        "isoform_id": iso.get("isoformIds", [""])[0],
+                        "name": iso.get("name", ""),
+                        "seq_ids": iso.get("sequenceIds", []),
+                    }
+                    isoforms.append(entry)
+        result["isoforms"] = isoforms
+        results.append(result)
+
+    return results
 
 
 def get_exon_coordinates(uniprot_id, tax_id=None):
