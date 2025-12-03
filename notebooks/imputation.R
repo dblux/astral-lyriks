@@ -1,11 +1,12 @@
 library(dplyr)
 library(tidyr)
 library(impute)
-library(sva)
+# library(sva)
 library(ggplot2)
-library(pheatmap)
+# library(pheatmap)
 library(RColorBrewer)
-library(viridis)
+# library(viridis)
+
 source('R/utils.R')
 source('R/impute.R')
 source('R/plot.R')
@@ -58,6 +59,8 @@ dim(lyriks)
 file <- "data/astral/processed/combat_knn5_lyriks-605_402.csv"
 lyriks_final <- read.csv(file, row.names=1, header=TRUE)
 
+filepath <- 'data/csa/processed/csa-filtered.csv'
+csa <- read.csv(filepath, row.names=1, header=TRUE)
 
 ##### EDA #####
 
