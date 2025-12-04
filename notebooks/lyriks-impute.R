@@ -12,6 +12,7 @@ source('R/impute.R')
 source('R/plot.R')
 theme_set(theme_bw(base_size = 7))
 
+########## LYRIKS ##########
 
 ##### Load data #####
 
@@ -483,3 +484,15 @@ ax <- ggplot_pca(
     panel.grid.minor = element_blank()
   )
 ggsave('tmp/astral/lyriks402/fig/pca-lyriks_final.pdf', ax, width = 4, height = 2.5)
+
+
+########## CSA ##########
+
+file <- 'data/csa/processed/csa-log.csv'
+raw <- read.csv(file, row.names=1, header=TRUE)
+raw[1:5, 1:5]
+
+# TODO: filter out full proteins and evaluate to find best k-NN
+pct_missing = rowSums(is.na(raw)) / ncol(raw)
+sum(pct_missing == 1)
+impute.knn
