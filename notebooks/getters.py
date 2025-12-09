@@ -13,6 +13,7 @@ async def _get_isoform(session, uniprot_id):
     print(f"Retrieved isoforms for {uniprot_id}...")
     # Extract information
     result = {}
+    result["accession"] = data["primaryAccession"]
     # Canonical sequence
     result["canonical"] = {
         "sequence": data["sequence"]["value"],
@@ -143,67 +144,13 @@ if __name__ == "__main__":
     kng1_1_uid = "P01042-1"
     kng1_2_uid = "P01042-2"
 
+    data = asyncio.run(get_isoforms_async("P07358"))
+    pprint.pprint(data)
+
     result = get_isoforms(kng1_1_uid)
     result = get_isoforms("P07358")
     pprint.pprint(result)
 
-    # Retrieve sequence and exon coordinates for ITIH1-1
-    # result_itih1_1 = get_exon_coordinates(itih1_1_uid)
-    # result_itih1_3 = get_exon_coordinates(itih1_3_uid)
-
     result = get_exon_coordinates(kng1_2_uid)
     pprint.pprint(result)
-
-    # Save to JSON
-    filepath = "data/tmp/spliceoforms/itih1-1.json"
-    with open(filepath, 'w') as f:
-        json.dump(result_itih1_1, f, indent=2)
-
-    filepath = "data/tmp/spliceoforms/itih1-3.json"
-    with open(filepath, 'w') as f:
-        json.dump(result_itih1_3, f, indent=2)
-
-    filepath = "data/tmp/spliceoforms/itih4_1.json"
-    with open(filepath, 'w') as f:
-        json.dump(result_itih4_1, f, indent=2)
-
-    filepath = "data/tmp/spliceoforms/kng1-2.json"
-    with open(filepath, 'w') as f:
-        json.dump(result, f, indent=2)
-
-
-    filepath = 'tmp/astral/lyriks402/biomarkers/biomarkers-ancova.csv'
-    bm_ancova = pd.read_csv(filepath, index_col=0)
-
-    filepath = 'tmp/astral/lyriks402/biomarkers/biomarkers-elasticnet-nestedkfold.csv'
-    bm_enet = pd.read_csv(filepath, index_col=0)
-    bm_enet.head()
-
-    filepath = 'tmp/astral/lyriks402/biomarkers/mongan-etable5.csv'
-    mongan = pd.read_csv(filepath, index_col=0)
-    monganq = mongan[mongan.q < 0.05]
-
-    for uid, gene in zip(bm_ancova.index, bm_ancova.Gene):
-        result = get_uniprot_isoforms(uid)
-        isoforms = result.get('isoforms', [])
-        if isoforms:
-            print(uid, gene)
-            # pprint.pprint(isoforms)
-            print()
-
-    for uid, gene in zip(bm_enet.index, bm_enet.Gene):
-        result = get_isoforms(uid)
-        isoforms = result.get('isoforms', [])
-        if isoforms:
-            print(uid, gene)
-            # pprint.pprint(isoforms)
-            print()
-
-    for uid, gene in zip(monganq.index, monganq['Protein name']):
-        result = get_isoforms(uid)
-        isoforms = result.get('isoforms', [])
-        if isoforms:
-            print(uid, gene)
-            pprint.pprint(isoforms)
-            print()
 
