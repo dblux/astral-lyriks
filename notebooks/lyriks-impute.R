@@ -496,3 +496,203 @@ raw[1:5, 1:5]
 pct_missing = rowSums(is.na(raw)) / ncol(raw)
 sum(pct_missing == 1)
 impute.knn
+
+
+########## SEPepQuant ##########
+
+file <- "data/tmp/spliceoforms/sepepquant-counts.csv"
+raw <- read.csv(file, header=TRUE)
+idx <- paste(raw$Symbol, raw$Order, raw$Class, sep = '_')
+print(any(duplicated(idx)))
+rownames(raw) <- idx
+counts <- raw[, -(1:3)]
+counts[1:5, 1:5]
+print(dim(counts))
+max(counts, na.rm = T)
+
+file <- "data/tmp/spliceoforms/sepepquant-lognorm_counts.csv"
+raw <- read.csv(file, header=TRUE)
+idx <- paste(
+    raw$Symbol,
+    raw$Order,
+    raw$Class,
+    sep = '_'
+)
+print(any(duplicated(idx)))
+rownames(raw) <- idx
+lognorm <- raw[, -(1:3)]
+lognorm[1:5, 1:5]
+print(dim(lognorm))
+max(lognorm, na.rm = T)
+
+# Impute in batch aware fashion
+# Only features with < 50% missing values in all batches
+# Assign QC samples to 4/9/2024 arbitrarily 
+extr_date <- metadata_lyriks[colnames(lognorm), 'Extraction.Date']
+lognorm_batches <- split_cols(lognorm, extr_date)
+
+# Features have to be < 50% missing in all batches
+PCT_MISSING <- 0.5
+pct_na <- sapply(lognorm_batches, function(x) rowSums(is.na(x)) / ncol(x))
+to_impute <- apply(pct_na < PCT_MISSING, 1, all)
+prots_nonsparse <- names(to_impute)[to_impute]
+flognorm <- lognorm[prots_nonsparse, ]
+flognorm_batches <- split_cols(flognorm, extr_date)
+print(dim(flognorm))
+
+# MVI: kNN
+knn_batches <- flognorm_batches %>%
+  lapply(function(x) impute.knn(data.matrix(x), k = 5)) %>%
+  lapply(function(x) x$data)
+knn_lognorm <- do.call(cbind, knn_batches)
+dim(knn_lognorm)
+sum(is.na(knn_lognorm))
+prod(dim(knn_lognorm))
+
+# write.csv(knn_lognorm, 'data/tmp/spliceoforms/sepepquant-knn5_lognorm.csv')
+
+### Parameter tuning ###
+
+# Estimate sigmoid parameters from data
+# Features: Fully present
+lognorm_feature_pct_zero <- rowSums(is.na(lognorm)) / ncol(lognorm)
+lognorm_full <- lognorm[lognorm_feature_pct_zero == 0, ]
+print(dim(lognorm_full))
+lognorm_full_batches <- split_cols(lognorm_full, extr_date)
+feature_nzmean <- rowMeans(lognorm, na.rm = TRUE)
+# file <- 'tmp/astral/peptides/fig/lognorm-pctzero_nzmean.pdf'
+# pdf(file)
+plot(
+     feature_nzmean, lognorm_feature_pct_zero,
+     pch = 16, cex = 1, xlim = c(-2, 8)
+)
+abline(h = 0.5, col = 'gray',)
+abline(v = 0.2, col = 'red')
+# dev.off()
+
+# Plot sigmoid function
+r <- 2.4
+s <- -0.2
+curve(1 - sigmoid(x, r, s), from = -2, to = 8)
+
+shape1 <- 0.8
+shape2 <- 3.6
+curve(dbeta(x, shape1 = shape1, shape2 = shape2))
+
+file <- 'tmp/astral/peptides/fig/lognorm-pctzero.pdf'
+pdf(file)
+# 582 features with < 95% missing values
+# hist(lognorm_feature_pct_zero[lognorm_feature_pct_zero < 0.95], breaks = 20)
+hist(lognorm_feature_pct_zero, breaks = 20)
+dev.off()
+
+# 1/4 of SEPEPs are completely missing
+sum(lognorm_feature_pct_zero == 1)
+
+# # Simulate MAR (batch)
+# x <- seq(8, 16, 0.01)
+# plot(x, 1 - sigmoid(x, 3, -12))
+# x <- seq(0, 1, 0.01)
+# pdf <- dbeta(x, shape1 = 0.8, shape2 = 9)
+# y <- rbeta(200, shape1 = 0.8, shape2 = 3)
+# plot(x, pdf)
+# max(y)
+
+
+# Mixture of two types of missing values 
+# 1. Sigmoid 2. Beta distribution
+dropout <- function(x, r, s, shape1 = NULL, shape2 = NULL) {
+  # sigmoid represents MNAR mechanism
+  # Beta represents MCAR 
+  # Different batches each with their own MCAR is equivalent to MAR
+  feat_means <- rowMeans(x)
+  p_na <- 1 - sigmoid(feat_means, r, s)
+  # curve(1 - sigmoid(x, r, s))
+  n_samples <- ncol(x)
+  for (i in seq_len(nrow(x))) {
+    idx <- rbinom(n_samples, 1, prob = p_na[i])
+    x[i, as.logical(idx)] <- NA
+    # If shape1 and shape2 are NULL, MCAR is not simulated
+    if (!is.null(shape1) && !is.null(shape2)) {
+      p <- rbeta(1, shape1 = shape1, shape2 = shape2)
+      # curve(dbeta(x, shape1 = shape1, shape2 = shape2))
+      idx <- rbinom(n_samples, 1, prob = p)
+      x[i, as.logical(idx)] <- NA
+    }
+  }
+  x
+}
+
+RMSE <- function(x, y) mean((data.matrix(x) - y) ^ 2) ^ 0.5
+
+# Drop out (original seed = 2)
+n_sim <- 5
+res_knn <- list()
+res_minprob <- list()
+for (i in seq_len(n_sim)) {
+  print("============")
+  print(paste("Simulation", i))
+  print("============")
+  set.seed(i)
+  mlognorm_batches <- lapply(
+    lognorm_full_batches, dropout,
+    r = r, s = s, shape1 = shape1, shape2 = shape2
+  )
+  # Removing proteins with >50% missing in any batch
+  pct_zero_batches <- mlognorm_batches %>%
+    sapply(function(x) rowSums(is.na(x)) / ncol(x))
+  prots_gt50_all <- rownames(lognorm_full)[rowSums(pct_zero_batches > 0.5) == 0]
+  print(length(prots_gt50_all))
+  fmlognorm_batches <- mlognorm_batches %>%
+    lapply(function(x) x[prots_gt50_all, ])
+  # print(lognorm_full_batches[[1]][1:5, 1:5])
+  print(mlognorm_batches[[1]][, 1:5])
+  # True values
+  lognorm_full_fltr_batches <- lognorm_full_batches %>%
+    lapply(function(x) x[prots_gt50_all, ])
+  lognorm_full_fltr <- do.call(cbind, lognorm_full_fltr_batches)
+  colnames(lognorm_full_fltr) <- sub(".*\\.", "", colnames(lognorm_full_fltr))
+  # Evaluate multiple k values
+  for (k in seq(3, 8)) {
+    rmse <- fmlognorm_batches  %>%
+      lapply(function(x) impute.knn(data.matrix(x), k = k, rng.seed = i)) %>%
+      lapply(function(x) x$data) %>%
+      do.call(cbind, .) %>%
+      RMSE(lognorm_full_fltr, .)
+    idx <- paste0("knn_", k)
+    res_knn[[idx]] <- c(res_knn[[idx]], rmse)
+  }
+  # MVI: MinProb
+  for (q in seq(0.1, 0.9, 0.1)) {
+    lognorm_minprob <- fmlognorm_batches %>%
+      lapply(impute.MinProb, q = q) %>%
+      lapply(data.matrix) %>%
+      do.call(cbind, .)
+    rmse <- RMSE(lognorm_full_fltr, lognorm_minprob)
+    idx <- paste0("minprob_", q)
+    res_minprob[[idx]] <- c(res_minprob[[idx]], rmse)
+  }
+}
+
+res_knn
+res_minprob
+
+# TODO: Batch correct
+# ComBat - Modelling class covariate
+knn_lyriks <- knn_lyriks[, rownames(metadata_slyriks)]
+all(colnames(knn_lyriks) %in% rownames(metadata_slyriks))
+mod <- model.matrix(~label, data = metadata_slyriks)
+combat_lyriks <- ComBat(
+  knn_lyriks,
+  batch = metadata_slyriks$Extraction.Date, mod = mod,
+  par.prior = TRUE, ref.batch = '5/9/24'
+)
+knn_lyriks[1:20, 1:5]
+combat_lyriks[1:20, 1:5]
+
+ax <- ggplot_pca(
+  cscombat_lyriks, metadata_slyriks,
+  color = 'label', shape = 'period'
+)
+file <- 'tmp/astral/fig/pca-cscombat-class.pdf'
+ggsave(file, ax, width = 5, height = 4)
