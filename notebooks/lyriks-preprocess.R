@@ -4,9 +4,9 @@ library(tidyr)
 library(ggplot2)
 library(pheatmap)
 library(RColorBrewer)
-library(sva)
+# library(sva)
 # library(umap)
-library(viridis)
+# library(viridis)
 source('R/calc.R')
 source('R/impute.R')
 source('R/normalise.R')
@@ -24,6 +24,7 @@ dim(pr_matrix)
 file <- 'data/astral/raw/all_sample.csv'
 processed <- read.csv(file, row.names = 1)
 uniprot_annot <- processed[, 1:2]
+rownames(processed)
 
 # Only pg_matrix has QC samples
 # pg_matrix is scaled according to scaling factors for each sample
@@ -110,9 +111,9 @@ metadata[qc_sids_short, 'Extraction.Date'] <- 'Not applicable'
 metadata[qc_sids_short, 'Class'] <- 'QC'
 metadata[qc_sids_short, 'Study'] <- 'QC'
 
-# Save metadata-all_645_13.csv
-file <- 'data/astral/metadata/metadata-all_645_13.csv'
-write.csv(metadata, file)
+# # Save metadata-all_645_13.csv
+# file <- 'data/astral/metadata/metadata-all_645_13.csv'
+# write.csv(metadata, file)
 
 # Rename colnames of lnmatrix
 idx <- match(colnames(lnmatrix), metadata$Polypeptide.Novogene.ID)
@@ -172,13 +173,90 @@ mth_cvt <- metadata_lyriks %>%
 print(mth_cvt)
 median(pull(mth_cvt))
 
-demographics <- metadata_lyriks %>%
+
+# TODO: Table 1
+file <- 'data/astral/metadata/LYRIKS/metadata_521.csv'
+metadata521 <- read.csv(file)
+
+file <- 'data/astral/metadata/LYRIKS/metadata_73.csv'
+metadata73 <- read.csv(file, row.names = 1)
+
+# file <- 'data/astral/metadata/LYRIKS/metadata_57.csv'
+# metadata57 <- read.csv(file, row.names = 1)
+
+file <- 'data/astral/metadata/LYRIKS/metadata-comorbidities_medication.csv'
+metadata60 <- read.csv(file)
+
+rownames(metadata57)
+head(metadata57)
+colnames(metadata57)
+
+metadata73$clinically_label
+metadata73$depression_lpc
+
+# BMI
+# Smoking
+# Substance use
+# Comorbidity
+# Medication
+
+# Comorbidity (how to derive?)
+# Medication
+# All participants had no known drug abuse history
+
+features <- c(
+  "eth",
+  "Period",
+  "smoke_stat",
+  "bmi"
+  # "depression_lp",
+  # "depression_lpc",
+  # "anxiety_ocd_lp",
+  # "anxiety_ocd_lpc"
+)
+metadata28 <- merge(
+  metadata_lyriks[startsWith(metadata_lyriks$Sample.Name, 'L'), ],
+  metadata73[, features],
+  by = 'row.names',
+)
+rownames(metadata28) <- metadata28$Row.names
+metadata28$Row.names <- NULL
+
+metadata28 %>%
   arrange(sn, period) %>%
-  subset(!is.na(sn), select = c('sn', 'age', 'gender', 'label')) %>%
+  subset(
+    label != 'control',
+    select = c('sn', 'period', 'age', 'gender', 'label', features)
+  ) %>%
+  group_by(sn) %>%
+  print()
+
+demographics <- metadata31 %>%
+  arrange(sn, period) %>%
+  subset(
+    label != 'control',
+    select = c('sn', 'period', 'age', 'gender', 'label', features)
+  ) %>%
   group_by(sn) %>%
   slice_head(n = 1) %>%
   ungroup()
+demographics$converter <- ifelse(
+  demographics$label == 'convert',
+  'converter', 'non-converter'
+)
+demographics11 <- merge(
+  demographics,
+  metadata60[c('sn', 'Medication')],
+  by = 'sn'
+)
 
+# tmp <- demographics[c("sn", "converter")] %>%
+#   arrange(converter, sn)
+# file <- 'tmp/lyriks-sn.csv'
+# write.csv(tmp, file)
+
+
+##### General demographics #####
 demographics %>%
   summarise(mean(age), sd(age))
 
@@ -187,42 +265,64 @@ gender_cnt <- demographics %>%
   table()
 gender_cnt / 135
 
-# Add ethnicity to metadata
-file <- 'data/lyriks/metadata/metadata_74.csv'
-metadata74 <- read.csv(file, row.names = 1)
-ethnicity <- unique(metadata74[, c('sn', 'eth')])
-rownames(ethnicity) <- NULL 
+head(demographics[c("depression_lpc", "depression_lp")], 20)
 
-demographics1 <- merge(demographics, ethnicity, by = 'sn')
-demographics2 <- subset(demographics1, label != 'control')
-demographics2$label <- ifelse(
-  demographics2$label == 'convert',
-  'converter', 'non-converter'
-)
+##### Table 1 #####
 
-demographics2 %>%
-  group_by(label) %>%
+### Age
+demographics %>%
+  group_by(converter) %>%
   summarize(mean(age), sd(age))
+unpaired_ttest <- t.test(age ~ converter, data = demographics)
+print(unpaired_ttest)
+# split(demographics$bmi, demographics$converter)
 
-table(demographics2$label)
-table(demographics2$gender, demographics2$label)
-table(demographics2$eth, demographics2$label)
+### BMI 
+demographics %>%
+  group_by(converter) %>%
+  summarize(mean(bmi), sd(bmi))
+unpaired_ttest <- t.test(bmi ~ converter, data = demographics)
+print(unpaired_ttest)
+# split(demographics$bmi, demographics$converter)
 
-# Statistical tests
-split(demographics2$age, demographics2$label)
-unpaired_ttest <- t.test(age ~ label, data = demographics2)
-
-gender_label <- table(demographics2$gender, demographics2$label)
-chisq_gender <- chisq.test(gender_label)
-fisher_gender <- fisher.test(gender_label)
-print(chisq_gender)
+### Gender
+ct_gender <- table(demographics$gender, demographics$converter)
+fisher_gender <- fisher.test(ct_gender)
+print(ct_gender)
 print(fisher_gender)
 
-eth_label <- table(demographics2$eth, demographics2$label)
-chisq_eth <- chisq.test(eth_label)
-fisher_eth <- fisher.test(eth_label)
-print(chisq_eth)
+### Ethnicity
+ct_eth <- table(demographics$eth, demographics$converter)
+fisher_eth <- fisher.test(ct_eth)
+print(ct_eth)
 print(fisher_eth)
+
+### Ethnicity
+demographics$smoking <- !(demographics$smoke_stat %in% c('non_smoker', 'quitted')) 
+ct_smoking <- table(demographics$smoking, demographics$converter)
+fisher_smoke_stat <- fisher.test(ct_smoking)
+print(ct_smoking)
+print(fisher_smoke_stat)
+
+### Medication
+
+# medication <- demographics %>%
+#   select(sn, converter, drug_1, drug_2, drug_3) %>%
+#   arrange(converter) %>%
+#   print()
+# 
+# medication$antidepressants_anxiolytics <-
+#   medication$drug_1 %in% c('Antidepressants', 'Anxiolytics') |
+#   medication$drug_2 %in% c('Antidepressants', 'Anxiolytics') |
+#   medication$drug_3 %in% c('Antidepressants', 'Anxiolytics')
+
+file <- 'tmp/lyriks-medication.csv'
+write.csv(medication, file, row.names = FALSE)
+
+ct_medication <- table(demographics11$Medication, demographics11$converter)
+fisher_medication <- fisher.test(ct_medication)
+print(ct_medication)
+print(fisher_medication)
 
 # Checking of relapse and ambiguous remit individuals
 metadata_lyriks %>%
@@ -236,6 +336,7 @@ metadata_lyriks %>%
     label == 'convert', 
     select = c('sn', 'label', 'final_label')
   )
+
 
 # file <- 'data/astral/metadata/metadata-csa.csv'
 # metadata_csa <- read.csv(file, row.names = 1)
