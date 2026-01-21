@@ -611,6 +611,7 @@ model_aucs = data.groupby(['selector', 'class_weight', 'model',]).agg(
     std_auc=('auc', 'std'),
 ).reset_index()
 model_aucs.sort_values(by='mean_auc', ascending=False, inplace=True)
+model_aucs['cv_auc'] = model_aucs['std_auc'] / model_aucs['mean_auc']
 model_bal_aucs = model_aucs[model_aucs['class_weight'] == 'balanced']
 # filepath = 'tmp/astral/lyriks402/new/models-aucs.csv'
 # model_bal_aucs.to_csv(filepath, index=False)

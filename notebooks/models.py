@@ -881,10 +881,12 @@ with open(filename, 'rb') as file:
     result_remission_605 = pickle.load(file)
 
 
-dir(result_ancova_bal.features)
+dir(result_ancova_bal)
 result_ancova_bal.metadata
 result_enet_bal.metadata
 result_svm.metadata
+
+# TODO: Calculate SD and CV of AUC
 
 bm1 = set(result_ancova_bal.features)
 bm2 = set(result_enet_bal.features)
@@ -894,11 +896,9 @@ bm1 & bm2
 bm1 & bm3
 bm2 & bm3
 
-
-
 ##### Evaluation ##### 
 
-result = result_remission_605
+result = result_ancova_bal
 name = (
     f'{result.metadata["version"]}-'
     f'{result.metadata["selector"]}-'
@@ -906,6 +906,16 @@ name = (
     f'{result.metadata["validator"]}'
 )
 print(name)
+print(len(result.labels))
+
+aucs = [
+    roc_auc_score(y, y_pred)
+    for y, y_pred in zip(result.labels, result.probas)
+]
+print(f"AUC = {np.mean(aucs):.3f} ± {np.std(aucs):.3f}")
+print(f"CV of AUC = {np.std(aucs) / np.mean(aucs):.3f}")
+
+aucs
 
 # Threshold = 0.5
 tn, fp, fn, tp = confusion_matrix(result.labels, result.predictions).ravel()

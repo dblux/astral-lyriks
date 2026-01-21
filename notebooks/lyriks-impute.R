@@ -291,6 +291,13 @@ prots_nonsparse <- names(to_impute)[to_impute]
 flyriks <- lyriks[prots_nonsparse, ]
 flyriks_batches <- split_cols(flyriks, extr_date)
 
+# Compute missingness statistics
+pct_imputed <- sum(is.na(flyriks)) / prod(dim(flyriks))
+percent_missing <- rowSums(is.na(flyriks)) / ncol(flyriks)
+print(pct_imputed)
+print(sum(percent_missing != 0))
+print(summary(percent_missing[percent_missing != 0]))
+
 # MVI: kNN
 knn_batches <- flyriks_batches %>%
   lapply(function(x) impute.knn(data.matrix(x), k = 5)) %>%
