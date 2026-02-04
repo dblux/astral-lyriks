@@ -13,8 +13,9 @@ astral = pd.read_csv(filepath, index_col=0)
 raw = astral.iloc[:, astral.columns.str.startswith('CA')]
 raw.replace(0, np.nan, inplace=True)
 csa = np.log2(raw)
-filepath = 'data/csa/processed/csa-log.csv'
-csa.to_csv(filepath)
+
+# filepath = 'data/csa/processed/csa-log.csv'
+# csa.to_csv(filepath)
 
 filepath = 'data/astral/metadata/metadata-CSA-full.csv'
 # filepath = 'data/csa/metadata197.csv'
@@ -39,6 +40,10 @@ exp_metadata1 = exp_metadata.join(
 full_metadata = metadata.join(exp_metadata1, how='left')
 full_metadata.columns
 full_metadata.iloc[:5,33:]
+filepath = 'data/astral/metadata/metadata-csa_200_43.csv'
+full_metadata.to_csv(filepath)
+
+
 
 
 # Plot: PCA

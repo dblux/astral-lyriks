@@ -70,16 +70,16 @@ csa <- read.csv(filepath, row.names=1, header=TRUE)
 # hist(feature_pct_zero, breaks = 20)
 # dev.off()
 # 
-sample_pct_zero <- colSums(data == 0) / nrow(data)
-qc <- cbind(metadata_all, pct_zero = sample_pct_zero)
-
-ax <- ggplot(qc) +
-  geom_point(
-    aes(x = study, y = pct_zero, color = class),
-    position = position_jitterdodge(jitter.width = 0.1, dodge.width = 0.8)
-  )
-file <- 'tmp/fig/astral/samples-pct-zero.pdf'
-ggsave(file, ax, width = 8, height = 5)
+# sample_pct_zero <- colSums(data == 0) / nrow(data)
+# qc <- cbind(metadata_all, pct_zero = sample_pct_zero)
+# 
+# ax <- ggplot(qc) +
+#   geom_point(
+#     aes(x = study, y = pct_zero, color = class),
+#     position = position_jitterdodge(jitter.width = 0.1, dodge.width = 0.8)
+#   )
+# file <- 'tmp/fig/astral/samples-pct-zero.pdf'
+# ggsave(file, ax, width = 8, height = 5)
 
 # # remove outliers with pct zero < 0.46
 # sum(sample_pct_zero < 0.46)
@@ -305,6 +305,9 @@ knn_batches <- flyriks_batches %>%
 knn_lyriks <- do.call(cbind, knn_batches)
 sum(is.na(knn_lyriks))
 prod(dim(knn_lyriks))
+dim(knn_lyriks)
+
+file <- 'data/astral/processed/knn5_lyriks-605_402.csv'
 
 ax <- ggplot_pca(
   knn_lyriks, metadata_slyriks,
@@ -312,6 +315,7 @@ ax <- ggplot_pca(
 )
 file <- 'tmp/astral/fig/pca-knn.pdf'
 # ggsave(file, ax, width = 10, height = 6)
+
 
 ### MVI: Evaluation ###
 
