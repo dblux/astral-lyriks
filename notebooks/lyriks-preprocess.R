@@ -2,8 +2,8 @@ library(dplyr)
 library(impute)
 library(tidyr)
 library(ggplot2)
-library(pheatmap)
 library(RColorBrewer)
+# library(pheatmap)
 # library(sva)
 # library(umap)
 # library(viridis)
@@ -46,7 +46,6 @@ file <- 'data/astral/raw/reprocessed-data.csv'
 reprocessed <- read.csv(file, row.names = 1)
 reprocessed1 <- log2(reprocessed[, 3:ncol(reprocessed)])
 # reprocessed1[1:5, paste0('QC', 1:5)]
-dim(reprocessed1)
 
 prots_drop <- setdiff(rownames(pg_matrix), rownames(reprocessed))
 prots_processed <- setdiff(rownames(reprocessed), rownames(pg_matrix))
@@ -948,3 +947,16 @@ dev.off()
 # TODO: Look at CSA and ABGN. Validate against literature? Look at pathway?
 
 # TODO: All possible metadata CSA and ABGN
+
+file <- 'data/astral/processed/knn5_lyriks-605_402-renamed.csv'
+lyriks <- read.csv(file, row.names = 1)
+
+file <- 'data/astral/metadata/psy-metadata_599_9.csv'
+metadata9 <- read.csv(file, row.names = 1)
+
+ax <- ggplot_pca(
+  lyriks, metadata9,
+  color = 'extraction_date'
+)
+file <- 'tmp/astral/fig/pca-knn5_lyriks.pdf'
+ggsave(file, ax, width = 5, height = 4)
