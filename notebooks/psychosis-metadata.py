@@ -37,8 +37,12 @@ lyriks_jy = pd.read_csv(filepath, index_col=0)
 
 ### CSA metadata ###
 
-filepath = 'data/astral/metadata/metadata-CSA-full.csv'
+filepath = 'data/astral/metadata/metadata-csa_199_34.csv'
 csa_metadata = pd.read_csv(filepath, index_col=0)
+
+filepath = 'data/astral/metadata/metadata-csa_199_37.csv'
+csa37 = pd.read_csv(filepath, index_col=0)
+csa37.columns
 
 ### Change L0673_18 to L0673S_24 ###
 states.index = states.index.str.replace('L0673S_18', 'L0673S_24')

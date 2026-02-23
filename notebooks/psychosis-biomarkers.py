@@ -9,17 +9,20 @@ from sklearn.decomposition import PCA
 import matplotlib.pyplot as plt
 import seaborn as sns
 
-
-def subset(df, metadata, condition):
-    """Subset dataframe based on metadata condition."""
-    metadata = metadata.loc[df.columns]
-    assert metadata.index.equals(df.columns)
-    idx = metadata.query(condition).index
-    return df[idx]
+import biopy.utils as bp
 
 
 filepath = 'data/astral/metadata/psy-metadata_599_10.csv'
 metadata = pd.read_csv(filepath, index_col=0)
+
+filepath = 'data/astral/metadata/metadata-csa_200_37.csv'
+csa_metadata = pd.read_csv(filepath, index_col=0)
+csa_metadata.comorbidities.fillna('No', inplace=True)
+csa_metadata.collection_datetime = pd.to_datetime(
+    csa_metadata.collection_datetime,
+    format='mixed'
+)
+csa_metadata.collection_datetime
 
 filepath = 'data/astral/processed/knn5_csa.csv'
 csa = pd.read_csv(filepath, index_col=0)
@@ -47,7 +50,7 @@ metadata.group.value_counts()
 # Subset baseline samples from cvt v.s. non-cvt
 # TODO: Should i use only LYRIKS dataset instead (it has more features)? Depends on whether the
 # analysis is to compare against across studies
-baseline_uhr = subset(
+baseline_uhr = bp.subset(
     psyc, metadata,
     'timepoint == 0 and group in ["cvt", "mnt", "rmt"]'
 )
@@ -103,7 +106,7 @@ ctrl_metadata = metadata.query(cond)
 ctrl_metadata.extraction_date.value_counts()
 print(ctrl_metadata.study.value_counts())
 
-ctrl = subset(psyc, metadata, cond)
+ctrl = bp.subset(psyc, metadata, cond)
 ctrl.head()
 ctrl.shape
 
@@ -137,30 +140,36 @@ corr_psyc.loc[:,corr_psyc.columns.str.startswith('CA')] = corr_psyc.loc[
     :,corr_psyc.columns.str.startswith('CA')].subtract(batch_effects, axis=0)
 # corr_psyc.equals(combat_psyc)
 
+### Investigate CSA ###
 
-# TODO: Plot PCA, UMAP and clustering?
+csa_metadata.columns
 
-def plot_umap(x, metadata, hue=None, alpha=1, ax=None, **kwargs):
-    reducer = umap.UMAP()
-    z = reducer.fit_transform(x.transpose())
-    z = pd.DataFrame(
-        z,
-        index=x.columns,
-        columns=['UMAP1', 'UMAP2']
-    )
-    z = z.join(metadata)
-    ax = sns.scatterplot(
-        data=z,
-        x='UMAP1',
-        y='UMAP2',
-        edgecolor=None,
-        hue=hue,
-        alpha=alpha,
-        ax=ax,
-        **kwargs
-    )
-    return ax
+# Comorbidities
+comorb_features = [
+    'group', 'comorbidities', 'comorbidities_specify', 'scid_2'
+]
+csa_metadata[comorb_features].head(30)
 
+ax = bp.plot_pca(
+    csa, metadata,
+    hue='age', style='group', alpha=0.6,
+    figsize=(8,5)
+)
+ax.legend(loc='center left', bbox_to_anchor=(1.05, 0.5))
+filepath = 'tmp/astral/fig/pca-csa.pdf'
+plt.savefig(filepath, dpi=300, bbox_inches='tight')
+    
+ax = bp.plot_umap(
+    csa, csa_metadata,
+    hue='collection_datetime', style='group', alpha=0.6,
+    figsize=(8,5)
+)
+ax.legend(loc='center left', bbox_to_anchor=(1.05, 0.5))
+filepath = 'tmp/astral/fig/umap-csa.pdf'
+plt.savefig(filepath, dpi=300, bbox_inches='tight')
+
+
+### Investigate dataset after correcting CSA ###
 
 metadata.columns
 ax = plot_umap(
@@ -178,9 +187,6 @@ ax.figure.set_size_inches(8, 5)
 filepath = 'tmp/astral/fig/umap-corr-psyc.pdf'
 ax.figure.savefig(filepath, dpi=300, bbox_inches='tight')
 plt.close()
-
-
-
 
 # Perfect confounding between state and medication
 
