@@ -53,13 +53,13 @@ def unpaired_ttest(x, y):
 # file = 'data/astral/processed/combat_knn5_lyriks.csv'
 # lyriks = pd.read_csv(file, index_col=0, header=0).T
 
-file = 'data/astral/processed/combat_knn5_lyriks-605_402.csv'
+file = 'data/astral/processed/lyriks_605_402-combat_knn5.csv'
 lyriks = pd.read_csv(file, index_col=0, header=0).T
 
 # file = 'data/astral/processed/metadata-lyriks.csv'
 # md = pd.read_csv(file, index_col=0, header=0)
 
-file = 'data/astral/processed/metadata-lyriks407.csv'
+file = 'data/astral/processed/metadata-lyriks_407_23.csv'
 md = pd.read_csv(file, index_col=0, header=0)
 md = md[md.label != 'QC']
 md['period'] = md['period'].astype(int)
@@ -395,8 +395,8 @@ for j in range(n_perms):
                     {'p': pvalues, 'q': qvalues},
                     index=X.columns
                 )
-                prots = statvalues.index[statvalues.p < 0.01] # p-value
-                # prots = statvalues.index[statvalues.q < 0.05] # q-value
+                # prots = statvalues.index[statvalues.p < 0.01] # p-value
+                prots = statvalues.index[statvalues.q < 0.05] # q-value
                 idx = X.columns.get_indexer(prots)
                 X_train_f = X_train[:, idx]
                 X_test_f = X_test[:, idx]
@@ -542,17 +542,19 @@ for j in range(n_perms):
         'model': repr(model),
         'validator': repr(cross_validator),
     })
-    # # Save
-    # name = (
-    #     f'{result.metadata["version"]}-'
-    #     f'{result.metadata["selector"]}-'
-    #     f'{result.metadata["model"]}-'
-    #     f'{result.metadata["validator"]}'
-    # )
-    # filename = f'tmp/astral/lyriks402/new/pickle/random15/{name}-{j}.pkl'
-    # with open(filename, 'wb') as file:
-    #     pickle.dump(result, file)
-    # print(filename)
+
+# Save
+name = (
+    f'{result.metadata["version"]}-'
+    f'{result.metadata["selector"]}-'
+    f'{result.metadata["model"]}-'
+    f'{result.metadata["validator"]}'
+)
+filename = f'tmp/astral/lyriks402/new/{name}.pkl'
+with open(filename, 'wb') as file:
+    pickle.dump(result, file)
+
+print(filename)
 
 # Save to file
 filepath = 'tmp/astral/lyriks402/new/pickle/test-sample_ids.csv'
@@ -688,11 +690,14 @@ result.metadata['snapshot'].update({
 })
 print(result.metadata)
 
+result.predictions
+result_ancova.predictions
 
 ##### Feature selection ##### 
-filepath = 'tmp/astral/lyriks402/new/pickle/1a-elasticnet-elasticnet-bal-nestedkfold.pkl'
+
+filepath = 'tmp/astral/lyriks402/new/pickle/1a-prognostic_ancova-elasticnet-bal-kfold.pkl'
 with open(filepath, 'rb') as file:
-    result = pickle.load(file)
+    result_ancova = pickle.load(file)
 
 # ANCOVA & Mongan
 result.features = combined_bm.tolist()
@@ -713,6 +718,11 @@ result.features = mongan_prots10
 print(result.features)
 len(result.features)
 
+for ps in result.pvals:
+    q = np.array(multipletests(ps, alpha=0.05, method='fdr_bh')[1])
+    print(np.sum(q < 0.05))
+    # print(len([p for p in ps if p < 0.01]))
+
 # BH correction
 qvals = np.array([
     multipletests(p, alpha=0.05, method='fdr_bh')[1]
@@ -723,6 +733,14 @@ avg_q = pd.DataFrame({'q': qvals.mean(axis=0)}, index=list(X))
 q_fil = avg_q[avg_q.q < 0.05]
 result.features = q_fil.index.tolist()
 len(result.features)
+
+# ps = pd.DataFrame(result.pvals).T
+# filepath = 'tmp/astral/pvals.csv'
+# ps.to_csv(filepath)
+# 
+# qs = pd.DataFrame(qvals).T
+# filepath = 'tmp/astral/qvals.csv'
+# qs.to_csv(filepath)
 
 # BH correction and ANCOVA coefficients
 qvals = np.array([
@@ -898,7 +916,7 @@ bm2 & bm3
 
 ##### Evaluation ##### 
 
-result = result_ancova_bal
+result = result 
 name = (
     f'{result.metadata["version"]}-'
     f'{result.metadata["selector"]}-'

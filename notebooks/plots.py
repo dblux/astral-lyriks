@@ -580,7 +580,7 @@ for filepath in filepaths:
     mean_aucs.append(np.mean(aucs))
 
 rnd_mean_auc = np.mean(mean_aucs)
-rnd_std_auc = np.std(mean_aucs)
+rnd_std_auc = np.std(mean_aucs, ddof=1)
 
 # AUCs
 dirpath = 'tmp/astral/lyriks402/new/pickle/'
@@ -603,8 +603,25 @@ for filepath in filepaths:
             'auc': roc_auc_score(labels, probas),
         })
 
+# Replace prognostic_ancova results
+filepath = 'tmp/astral/lyriks402/new/1a-prognostic_ancova-elasticnet-bal-kfold-qval.pkl'
+
+with open(filepath, 'rb') as file:
+    result = pickle.load(file)
+
+for i, (labels, probas) in enumerate(zip(result.labels, result.probas)):
+    rows.append({
+        'selector': result.metadata['selector'],
+        'class_weight': result.metadata['class_weight'],
+        'model': result.metadata['model'],
+        'fold': i,
+        'auc': roc_auc_score(labels, probas),
+    })
+
 data = pd.DataFrame(rows)
-data
+
+# Remove old prognostic_ancova results (remove rows 48 to 51)
+data = data.drop(index=range(48, 52))
 
 model_aucs = data.groupby(['selector', 'class_weight', 'model',]).agg(
     mean_auc=('auc', 'mean'),
@@ -615,7 +632,6 @@ model_aucs['cv_auc'] = model_aucs['std_auc'] / model_aucs['mean_auc']
 model_bal_aucs = model_aucs[model_aucs['class_weight'] == 'balanced']
 # filepath = 'tmp/astral/lyriks402/new/models-aucs.csv'
 # model_bal_aucs.to_csv(filepath, index=False)
-
 
 # AUC1 
 aucs1 = model_bal_aucs[
@@ -640,6 +656,7 @@ filepath = 'tmp/astral/lyriks402/fig/barh-auc1.pdf'
 plt.savefig(filepath)
 
 # AUC2
+
 aucs2 = model_bal_aucs.iloc[[0, 1, 3], :]
 aucs2.loc[len(aucs2)] = {
     'selector': 'random',
@@ -648,14 +665,14 @@ aucs2.loc[len(aucs2)] = {
     'mean_auc': rnd_mean_auc,
     'std_auc': rnd_std_auc
 }
+aucs2.set_index('selector', inplace=True)
+aucs2.rename(index={
+    'prognostic_ancova': 'LYRIKS (ANCOVA)',
+    'elasticnet': 'LYRIKS (elastic net)',
+    'svm-linear': 'LYRIKS (SVM)',
+    'random': 'LYRIKS (random)',
+}, inplace=True)
 print(aucs2)
-
-aucs2.index = [
-    'LYRIKS (elastic net)',
-    'LYRIKS (ANCOVA)',
-    'LYRIKS (SVM)',
-    'LYRIKS (random)',
-]
 
 fig, ax = plt.subplots(1, 1, figsize=(4.6, 2.4))
 ax.barh(
