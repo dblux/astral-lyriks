@@ -8,6 +8,7 @@ from scipy.stats import spearmanr
 from statsmodels.formula.api import ols
 from statsmodels.stats.multitest import multipletests
 from sklearn.decomposition import PCA
+
 from matplotlib.lines import Line2D
 import matplotlib.pyplot as plt
 import matplotlib.dates as mdates
@@ -19,6 +20,16 @@ import biopy.utils as bp
 
 filepath = 'data/astral/metadata/metadata-psy_602_16.csv'
 metadata = pd.read_csv(filepath, index_col=0)
+metadata.run_datetime = pd.to_datetime(
+    metadata.run_datetime,
+    format='mixed'
+)
+metadata['run_datenum'] = mdates.date2num(metadata.run_datetime)
+metadata.collection_datetime = pd.to_datetime(
+    metadata.collection_datetime,
+    format='mixed'
+)
+metadata['collection_datenum'] = mdates.date2num(metadata.collection_datetime)
 
 filepath = 'data/astral/metadata/metadata-csa_200_37.csv'
 metadata_csa = pd.read_csv(filepath, index_col=0)
@@ -56,21 +67,31 @@ lyriks_combat = pd.read_csv(filepath, index_col=0)
 psy_knn = lyriks_knn.join(csa_knn, how='inner')
 psy_combat = lyriks_combat.join(csa_knn, how='inner')
 
-filepath = 'data/astral/processed/reprocessed-data.csv'
+filepath = 'data/astral/processed/reprocessed-data-renamed.csv'
 data = pd.read_csv(filepath, index_col=0)
-csa_raw = data.iloc[:, data.columns.str.startswith('CA')].copy()
-csa_raw.replace(0, np.nan, inplace=True)
-csa = np.log2(csa_raw)
+data.replace(0, np.nan, inplace=True)
+astral = np.log2(data.iloc[:, 2:])
 
-prot_fullcsa = ~csa.isna().any(axis=1)
-csa_full = csa[prot_fullcsa]
+lyriks = astral.iloc[:, astral.columns.str.startswith('L')].copy()
+is_full_lyriks = ~lyriks.isna().any(axis=1)
+lyriks_full = lyriks[is_full_lyriks]
+
+csa = astral.iloc[:, astral.columns.str.startswith('CA')].copy()
+is_full_csa = ~csa.isna().any(axis=1)
+csa_full = csa[is_full_csa]
 csa_574 = csa.loc[psy_knn.index]
 csa_zero_574 = csa_574.fillna(0)
 csa_knn_574 = csa_knn.loc[psy_knn.index]
 
-uniprot_gene_map = {
-    k: v for k, v in zip(data.index, data.Gene)
-}
+uniprot_gene_map = {k: v for k, v in zip(data.index, data.Gene)}
+
+##### Check gene mapping #####
+
+# 'STAT1' in uniprot_gene_map.values()
+stat1_match = {k: v for k, v in uniprot_gene_map.items() if v == 'STAT1'}
+data.loc['P42224'].tolist()
+data.shape
+
 
 ##### Check metadata coverage #####
 
@@ -94,14 +115,6 @@ lyriks_knn.columns[lyriks_knn.columns.str.startswith('L0365')]
 ##### Transform datetime data #####
 
 # TODO: Transform for plotting and modelling
-metadata.run_datetime = pd.to_datetime(
-    metadata.run_datetime,
-    format='mixed'
-)
-metadata.collection_datetime = pd.to_datetime(
-    metadata.collection_datetime,
-    format='mixed'
-)
 
 # TODO: Transform according to specific plot (earliest day is different for different subsets)
 metadata['run_days'] = (
@@ -111,9 +124,8 @@ metadata['collection_days'] = (
     metadata.collection_datetime - metadata.collection_datetime.min()
 ) / np.timedelta64(1, "D")
 
-metadata_csa_197['collection_date_sec'] = mdates.date2num(
-    metadata_csa_197.collection_datetime
-)
+metadata['collection_date_sec'] = mdates.date2num(metadata.collection_datetime)
+metadata.columns
 
 ##### CSA #####
 
@@ -203,184 +215,75 @@ for prot in data.columns[:-n_cov]:
 _, qvalues, _, _ = multipletests(
     pvalues, alpha=0.05, method='fdr_bh'
 )
-
 stats = pd.DataFrame(
     {'p': pvalues, 'q': qvalues},
     index=csa_full.index
 )
-schizo_sig = stats[stats.q < 0.05].copy()
-schizo_genes = schizo_sig.index.map(uniprot_gene_map).tolist()
-
-filepath = 'tmp/astral/schizo-sig.csv'
-with open(filepath, 'w') as f:
-    f.writelines('\n'.join(schizo_genes))
-    f.close()
+genes = stats.index.map(uniprot_gene_map)
+stats.insert(0, 'Gene', genes)
+stats.sort_values('q', inplace=True)
+# filepath = 'tmp/astral/bm-schizo-stats.csv'
+stats.to_csv(filepath, index=True)
 
 
-### PCA and UMAP ###
+### Overlap analysis ###
 
-def plot_pca(ax, x, metadata, colourbar=False, **kwargs):
-    '''PCA plot for visualisation of batch effects.'''
-    pca = PCA(n_components=2)
-    z = pca.fit_transform(x.transpose())
-    var_ratio = pca.explained_variance_ratio_
-    z = pd.DataFrame(
-        z,
-        index=x.columns,
-        columns=['PC1', 'PC2']
-    )
-    z = z.join(metadata)
-    ax = sns.scatterplot(
-        data=z,
-        x='PC1',
-        y='PC2',
-        edgecolor=None,
-        ax=ax,
-        **kwargs
-    )
-    ax.set_xlabel(f'PC1 ({var_ratio[0]*100:.1f}%)')
-    ax.set_ylabel(f'PC2 ({var_ratio[1]*100:.1f}%)')
+filepath = 'tmp/csa/biomarkers/hgnc-schizo.txt'
+with open(filepath) as f:
+    hgnc_schizo = set([line.strip() for line in f.readlines()])
 
-    if colourbar:
-        import matplotlib.dates as mdates
-        import matplotlib as mpl
-        # Metadata
-        hue = kwargs.pop('hue', None)
-        palette = kwargs.pop('palette', 'rocket')
-        # Create normalization for colourbar
-        norm = mpl.colors.Normalize(
-            vmin=metadata[hue].min(),
-            vmax=metadata[hue].max()
-        )
-        sm = mpl.cm.ScalarMappable(norm=norm, cmap=palette)
-        sm.set_array([])
-        fig = ax.get_figure()
-        cbar = fig.colorbar(sm, ax=ax)
-        cbar.set_label(hue)
-        cbar.ax.yaxis.set_major_formatter(mdates.DateFormatter('%Y-%m-%d'))
+filepath = 'data/astral/etc/silver_standard.csv'
+silver = pd.read_csv(filepath)
+silver_schizo = set(silver.loc[silver.signature == 'schizophrenia', 'gene'])
 
-    return ax
+filepath = 'tmp/astral/lyriks402/new/biomarkers/biomarkers-ancova.csv'
+bm_ancova = pd.read_csv(filepath, index_col=0)
+hgnc_ancova = set(bm_ancova.Gene)
 
-def plot_pca(ax, x, metadata, colourbar=False, **kwargs):
-    '''PCA plot for visualisation of batch effects.'''
-    pca = PCA(n_components=2)
-    z = pca.fit_transform(x.transpose())
-    var_ratio = pca.explained_variance_ratio_
-    z = pd.DataFrame(
-        z,
-        index=x.columns,
-        columns=['PC1', 'PC2']
-    )
-    z = z.join(metadata)
-    ax = sns.scatterplot(
-        data=z,
-        x='PC1',
-        y='PC2',
-        edgecolor=None,
-        ax=ax,
-        **kwargs
-    )
-    ax.set_xlabel(f'PC1 ({var_ratio[0]*100:.1f}%)')
-    ax.set_ylabel(f'PC2 ({var_ratio[1]*100:.1f}%)')
+filepath = 'tmp/astral/lyriks402/new/biomarkers/biomarkers-elasticnet.csv'
+bm_enet = pd.read_csv(filepath, index_col=0)
+hgnc_enet = set(bm_enet.Gene)
 
-    if colourbar:
-        import matplotlib.dates as mdates
-        import matplotlib as mpl
-        # Metadata
-        hue = kwargs.pop('hue', None)
-        palette = kwargs.pop('palette', 'rocket')
-        # Create normalization for colourbar
-        norm = mpl.colors.Normalize(
-            vmin=metadata[hue].min(),
-            vmax=metadata[hue].max()
-        )
-        sm = mpl.cm.ScalarMappable(norm=norm, cmap=palette)
-        sm.set_array([])
-        fig = ax.get_figure()
-        cbar = fig.colorbar(sm, ax=ax)
-        cbar.set_label(hue)
-        cbar.ax.yaxis.set_major_formatter(mdates.DateFormatter('%Y-%m-%d'))
+from matplotlib import pyplot as plt
+from matplotlib_venn import venn2, venn3
 
-    return ax
-
-metadata_csa_plot = metadata.loc[csa_full.columns]
-metadata_csa_plot['collection_days'] = (
-    metadata_csa_plot.collection_datetime - metadata_csa_plot.collection_datetime.min()
-) / np.timedelta64(1, "D")
-metadata_csa_plot.collection_days
-
-fig, ax = plt.subplots(figsize=(10, 8))
-ax = plot_pca(
-    ax,
-    csa_full,
-    metadata_csa_plot,
-    colourbar=True,
-    hue='collection_days',
-    alpha=0.6,
-    palette='rocket',
-    legend=False
+plt.figure()
+venn2(
+    [hgnc_schizo, silver_schizo],
+    set_labels=("CSA", "Silver standard")
 )
-# style_levels = metadata['group'].unique()
-# markers = ["o", "s", "^", "D", "X", "v", "*", "P"]
-# marker_map = {
-#     level: marker for level, marker in zip(style_levels, markers)
-# }
-# handles = [
-#     Line2D(
-#         [0], [0],
-#         marker=marker_map[level],
-#         linestyle="",
-#         color="black",
-#         label=level
-#     )
-#     for level in style_levels
-# ]
-# ax.legend(
-#     handles=handles,
-#     title='group',
-#     loc="lower right",
-#     # bbox_to_anchor=(1.05, 0.5)
-# )
 plt.show()
 
-filepath = 'tmp/astral/fig/pca_run_days-csa_full.pdf'
-plt.savefig(filepath, dpi=300, bbox_inches='tight')
-plt.close()
+plt.figure()
+venn3(
+    [hgnc_schizo, hgnc_ancova, hgnc_enet],
+    set_labels=("CSA", "LYRIKS (ANCOVA)", "LYRIKS (elastic net)")
+)
+plt.show()
 
+##### Plot PCA #####
+
+metadata_csa_plot = metadata.loc[csa_full.columns]
+# metadata_csa_plot['collection_days'] = (
+#     metadata_csa_plot.collection_datetime - metadata_csa_plot.collection_datetime.min()
+# ) / np.timedelta64(1, "D")
+
+metadata.columns
 
 fig, ax = plt.subplots(figsize=(10, 8))
-ax = bp.plot_umap(
+ax = bp.plot_pca(
     ax,
-    csa_zero_574,
-    metadata_csa_197,
+    lyriks_full,
+    metadata,
     colourbar=True,
     hue='collection_datenum',
-    style='group',
+    style='extraction_date',
     alpha=0.6,
-    palette='rocket',
-    legend=False
+    palette='viridis',
+    legend=True
 )
-style_levels = metadata_csa_197['group'].unique()
-markers = ["o", "s", "^", "D", "X", "v"]
-marker_map = {
-    level: marker for level, marker in zip(style_levels, markers)
-}
-handles = [
-    Line2D(
-        [0], [0],
-        marker=marker_map[level],
-        linestyle="",
-        color="black",
-        label=level
-    )
-    for level in style_levels
-]
-ax.legend(
-    handles=handles,
-    title='group',
-    loc="lower right",
-    # bbox_to_anchor=(1.05, 0.5)
-)
+plt.show()
+
 filepath = 'tmp/astral/fig/umap-csa_zero_574.pdf'
 plt.savefig(filepath, dpi=300, bbox_inches='tight')
 plt.close()
@@ -512,45 +415,45 @@ olink_stats_uniprot.index.sort_values().tolist()
 # metadata_csa.columns
 # metadata_csa.head()
 # 
-# # Investigate collection datetime
-# 
-# sns.histplot(
-#     metadata_csa.collection_datetime,
-#     bins=50
-# )
-# filepath = 'tmp/astral/fig/hist-collection-datetime.pdf'
-# plt.savefig(filepath)
-# 
-# import matplotlib.dates as mdates
-# metadata_csa['collection_datenum'] = mdates.date2num(metadata_csa.collection_datetime)
-# 
-# fig, ax = plt.subplots(figsize=(8, 8))
-# ax = bp.plot_pca(
-#     ax,
-#     csa_full,
-#     metadata_csa,
-#     colourbar=True,
-#     hue='collection_datenum',
-#     style='group',
-#     alpha=0.6,
-#     palette='rocket',
-#     legend=False
-# )
-# 
-# # ax1.legend(loc='center left', bbox_to_anchor=(1.05, 0.5))
-# ax2 = bp.plot_pca(
-#     ax2,
-#     csa_full,
-#     metadata_csa,
-#     hue='group',
-#     alpha=0.6
-# )
-# # ax2.legend(loc='center left', bbox_to_anchor=(1.05, 0.5))
-# 
-# filepath = 'tmp/astral/fig/pca-csa.pdf'
-# plt.savefig(filepath, dpi=300, bbox_inches='tight')
-# plt.close()
-#     
+# Investigate collection datetime
+
+sns.histplot(
+    metadata_csa.collection_datetime,
+    bins=50
+)
+filepath = 'tmp/astral/fig/hist-collection-datetime.pdf'
+plt.savefig(filepath)
+
+import matplotlib.dates as mdates
+metadata_csa['collection_datenum'] = mdates.date2num(metadata_csa.collection_datetime)
+
+fig, ax = plt.subplots(figsize=(8, 8))
+ax = bp.plot_pca(
+    ax,
+    csa_full,
+    metadata_csa,
+    colourbar=True,
+    hue='collection_datenum',
+    style='group',
+    alpha=0.6,
+    palette='rocket',
+    legend=False
+)
+
+# ax1.legend(loc='center left', bbox_to_anchor=(1.05, 0.5))
+ax2 = bp.plot_pca(
+    ax2,
+    csa_full,
+    metadata_csa,
+    hue='group',
+    alpha=0.6
+)
+# ax2.legend(loc='center left', bbox_to_anchor=(1.05, 0.5))
+
+filepath = 'tmp/astral/fig/pca-csa.pdf'
+plt.savefig(filepath, dpi=300, bbox_inches='tight')
+plt.close()
+    
 # ax = bp.plot_umap(
 #     csa, metadata_csa,
 #     hue='collection_datetime', style='group', alpha=0.6,

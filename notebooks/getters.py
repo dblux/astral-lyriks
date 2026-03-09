@@ -5,6 +5,8 @@ import pprint
 import aiohttp
 import asyncio
 
+from collections import defaultdict
+
 
 async def _get_isoform(session, uniprot_id):
     url = f"https://rest.uniprot.org/uniprotkb/{uniprot_id}.json"
@@ -133,6 +135,28 @@ def get_exon_coordinates(uniprot_id, tax_id=None):
     result["exons"] = exon_info 
     return result
 
+
+def get_symbol_map(symbols, organism=9606):
+    """Maps gene symbols to UniProt IDs using JSON and dict comprehension."""
+    query = " OR ".join([f"gene_exact:{s}" for s in symbols])
+    url = "https://rest.uniprot.org/uniprotkb/search"
+    params = {
+        "query": f"({query}) AND (organism_id:{organism}) AND (reviewed:true)",
+        "fields": "accession,gene_names",
+        "format": "json"
+    }
+    response = requests.get(url, params=params)
+    response.raise_for_status()
+    data = response.json().get("results", [])
+    # Dictionary comprehension to extract the primary gene name and accession
+    return {
+        gene["geneName"]["value"]: entry["primaryAccession"]
+        for entry in data
+        for gene in entry.get("genes", [])
+        if "geneName" in gene and gene["geneName"]["value"] in symbols
+    }
+
+
 if __name__ == "__main__":
     itih1_1_uid = "P19827-1"
     itih1_3_uid = "P19827-3"
@@ -154,3 +178,18 @@ if __name__ == "__main__":
     result = get_exon_coordinates(kng1_2_uid)
     pprint.pprint(result)
 
+    import numpy as np
+    import pandas as pd
+
+    filename = "data/astral/etc/silver_standard.csv"
+    silver = pd.read_csv(filename)
+    res = get_symbol_map(silver.gene.tolist())
+    silver.insert(2, 'uniprot', silver['gene'].map(res))
+
+    filename = "data/astral/etc/silver_standard-uniprot.csv"
+    silver.to_csv(filename, index=False)
+
+    i = 0
+    for k, v in res.items():
+        print(k, v)
+        i += 1

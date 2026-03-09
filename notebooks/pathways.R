@@ -30,6 +30,15 @@ uid_mongan <- rownames(mongan)[mongan$q < 0.05]
 uid_mongan33 <- uid_mongan[uid_mongan %in% uids_lyriks]
 length(uid_mongan33)
 
+file <- 'tmp/csa/biomarkers/uniprot-schizo.txt'
+uniprot_schizo <- readLines(file)
+
+file <- 'tmp/csa/biomarkers/uniprot-schizo-env.txt'
+uniprot_schizo_env <- readLines(file)
+
+file <- 'data/astral/etc/silver_standard-uniprot.csv'
+silver <- read.csv(file)
+
 ##### KEGG ######
 
 #' Compute KEGG pathway frequencies of UniProt IDs 
@@ -73,9 +82,31 @@ kegg_frequency <- function(uniprot_ids) {
   res
 }
 
+# TODO: Map silver to KEGG
+silver_schizo <- silver$uniprot[silver$signature == 'schizophrenia']
+
 ancova_res <- kegg_frequency(uid_ancova)
 enet_res <- kegg_frequency(uid_enet)
 mongan_res <- kegg_frequency(uid_mongan33)
+
+res_schizo <- kegg_frequency(uniprot_schizo)
+res_schizo_env <- kegg_frequency(uniprot_schizo_env)
+res_silver <- kegg_frequency(silver_schizo)
+freq_silver <- res_silver$kegg_freq
+
+library(scales)
+
+# Plot all pathway frequencies as horizontal bar plot
+ax <- ggplot(freq_silver[freq_silver$Freq > 5, ]) +
+  geom_col(aes(
+    x = Freq,
+    y = reorder(name, Freq, sum)
+  )) +
+  labs(y = 'KEGG') +
+  scale_x_continuous(breaks = pretty_breaks()) 
+
+file <- 'tmp/csa/fig/kegg-silver.pdf'
+ggsave(file, ax, width = 4, height = 2)
 
 hsa_pathways <- keggList('pathway', 'hsa')
 
