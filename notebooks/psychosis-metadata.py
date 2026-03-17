@@ -41,13 +41,12 @@ lyriks_jy = pd.read_csv(filepath, index_col=0)
 
 filepath = 'data/astral/metadata/metadata_blood_collection-lyriks.csv'
 lyriks_collection = pd.read_csv(filepath)
-# lyriks_collection.columns
 lyriks_collection.index = lyriks_collection.sn + \
     lyriks_collection.is_control + '_' + \
     lyriks_collection.timepoint.astype(str)
-print(lyriks_collection.head())
+lyriks_collection['date'] = pd.to_datetime(lyriks_collection.date, format='mixed')
+
 # metadata10.index[~metadata10.index.isin(lyriks_collection.index)]
-# lyriks_data.columns[lyriks_data.columns.str.startswith('L0567')]
 # lyriks_collection.iloc[200:250]
 
 ### CSA metadata ###
@@ -79,7 +78,6 @@ collection_datetime = pd.to_datetime(pd.concat([
 ]), format='mixed')
 collection_datetime = collection_datetime.rename('collection_datetime')
 metadata_expt = metadata_expt.join(collection_datetime, how='left')
-print(metadata_expt.tail())
 
 # CSA
 csa = csa_metadata[['group', 'age', 'bmi', 'gender', 'ethnicity', 'smoking']].copy()
@@ -124,22 +122,76 @@ print(psy_almost.shape)
 print(psy_almost.head())
 print(psy_almost.columns)
 
-filepath = 'data/astral/metadata/metadata-psy_602_15.csv'
-psy_almost.to_csv(filepath, index=True)
+# filepath = 'data/astral/metadata/metadata-psy_602_15.csv'
+# psy_almost.to_csv(filepath, index=True)
+
+# TODO: Check month of conversion v.s. actual FEP sample collection
+cvt_collection = lyriks_collection.query('is_convert == True').dropna()
+# Remove L0167S as it is wrongly indicated as convert. It is not in Astral data.
+cvt_collection = cvt_collection.loc[~(cvt_collection.sn == 'L0167')]
+
+def calc_time_diff(group):
+    group = group.copy()
+    group['collection_months'] = (group['date'] - group['date'].min()) / pd.Timedelta(days=30.44)
+    return group
+
+cvt_patients = cvt_collection.groupby('sn', group_keys=False)
+cvt_collection = cvt_patients.apply(calc_time_diff)
+cvt_collection['month_of_conversion'] = metadata73.loc[
+    cvt_collection.index, 'month_of_conversion'
+]
+cvt_collection['fep_delta'] = cvt_collection['collection_months'] - cvt_collection['month_of_conversion']
+
+filepath = 'tmp/astral/cvt-fep_delta.csv'
+cvt_collection.to_csv(filepath)
+
+# If hoping to plot and see patterns, will need to account for batch effects.
+# Focus on comparing conversion v.s. maintain
+# Calculate collection_months for maintain patients as well
+
+lyriks_collection.shape
+lyriks_collection_406 = lyriks_collection[~lyriks_collection.date.isna()]
+
+
+cvt24 = cvt_collection.loc[
+    cvt_collection.timepoint == 24,
+    ['sn', 'timepoint', 'month_of_conversion', 'collection_months']
+]
+
+
+filepath = 'tmp/astral/lyriks-collection_timediff_month_of_conversion.csv'
+cvt24.to_csv(filepath, index=False)
+
+# Conclusion: L0073S_24 sample is actually six months before FEP
+# Relabel state as UHR instead of FEP
+
+# TODO: Edit state of L0073_24. Get CAARMS status (state) of L0365_18 and update
+# state in the final metadata.
+# TODO: Check caarms_status of full metadata. Month 18
 
 # TODO: Assign state
 # filepath = 'data/astral/metadata/psy-metadata_602_14.csv'
 # psy_almost = pd.read_csv(filepath, index_col=0)
 
+# TODO: Check through final consolidated metadata
+
 psy_all = psy_almost.join(states[['label_mapped']], how='left')
 psy_all.rename(columns={'label_mapped': 'state'}, inplace=True)
 print(psy_all.shape)
+
 # print(psy_all[psy_all.sn == 'L0365S'])
+
 filepath = 'data/astral/metadata/metadata-psy_602_16.csv'
 psy_all.to_csv(filepath, index=True)
 
 # Check with Astral dataset
+filepath = 'data/astral/metadata/metadata-psy_602_16.csv'
+metadata = pd.read_csv(filepath, index_col=0)
+metadata.head()
+metadata.loc['L0073S_24']
 
+lyriks_data.columns.str.startswith('L0417S_24').any()
+lyriks_collection.loc['L0417S_24']
 
 # TODO: medication
 csa_metadata
