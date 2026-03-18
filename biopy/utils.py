@@ -196,7 +196,7 @@ def plot_pca(ax, x, metadata, colourbar=False, **kwargs):
 
 
 def plot_umap(ax, x, metadata, colourbar=False, **kwargs):
-    reducer = UMAP(n_components=2, random_state=42)
+    reducer = umap.UMAP(n_components=2, random_state=42)
     z = reducer.fit_transform(x.transpose())
     z = pd.DataFrame(
         z,

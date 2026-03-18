@@ -109,6 +109,14 @@ uid_p005 <- rownames(res)[res['P.Value'] < 0.05]
 genes_p005 <- uniprot_gene_map[uid_p005]
 print(unname(genes_p005))
 
+# TODO: Ad hoc check
+file <- 'tmp/astral/conversion-pairedttest.csv'
+paired_ttest <- read.csv(file, row.names = 1)
+paired_ttest
+
+qvalue = p.adjust(paired_ttest$pvalue, method = 'BH')
+qvalue
+
 # Do baseline comparison between control and UHR present in our data
 
 # Decide to use splines for run_datetime and collection_datetime

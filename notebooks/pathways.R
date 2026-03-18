@@ -11,9 +11,11 @@ file <- 'data/astral/processed/combat_knn5_lyriks-605_402.csv'
 lyriks <- read.csv(file, row.names = 1)
 uids_lyriks  <- rownames(lyriks)
 
-file <- 'data/astral/raw/reprocessed-data.csv'
+file <- 'data/astral/processed/reprocessed-data-renamed.csv'
 reprocessed <- read.csv(file, row.names = 1)
 annot <- reprocessed[1:2]
+lyriks <- reprocessed[, startsWith(colnames(reprocessed), "L")]
+lyriks_full <- lyriks[rowSums(lyriks == 0) == 0, ]
 
 ### Load biomarkers
 file <- 'tmp/astral/lyriks402/new/biomarkers/biomarkers-elasticnet.csv'
@@ -93,6 +95,34 @@ res_schizo <- kegg_frequency(uniprot_schizo)
 res_schizo_env <- kegg_frequency(uniprot_schizo_env)
 res_silver <- kegg_frequency(silver_schizo)
 freq_silver <- res_silver$kegg_freq
+
+lyriks_res <- kegg_frequency(rownames(lyriks_full))
+
+head(lyriks_res$kegg_freq)
+lyriks_res$kegg_pathways
+lyriks_res$kegg_ids
+
+class(lyriks_res$kegg_pathways)
+lyriks_res$kegg_pathways
+
+list2dict <- function(l) {
+  dict <- list()
+  for (i in seq_along(l)) {
+    print(l[[i]])
+    print(names(l)[i])
+    break
+    dict[l[[i]]] <- l[[i]]
+  }
+  return(dict)
+}
+
+list2dict(lyriks_res$kegg_pathways)
+
+library(jsonlite)
+
+file <- 'tmp/astral/kegg-constituents.json'
+write_json(, file)
+
 
 library(scales)
 
