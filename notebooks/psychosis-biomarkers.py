@@ -47,7 +47,7 @@ metadata_csa.collection_datetime = pd.to_datetime(
 # 
 # filepath = 'data/astral/etc/annotation-olink_75.csv'
 # annot_olink = pd.read_csv(filepath, index_col=0)
-# olink_uniprot_map = {
+# map_olink_uniprot = {
 #     k: v for k, v in zip(annot_olink.index, annot_olink.uniprot)
 # }
 
@@ -73,26 +73,22 @@ psy_combat = lyriks_combat.join(csa_knn, how='inner')
 filepath = 'data/astral/processed/reprocessed-data-renamed.csv'
 data = pd.read_csv(filepath, index_col=0)
 data.replace(0, np.nan, inplace=True)
-astral = np.log2(data.iloc[:, 2:])
+psy = np.log2(data.iloc[:, 2:-46])
 
-lyriks = astral.iloc[:, astral.columns.str.startswith('L')].copy()
-is_full_lyriks = ~lyriks.isna().any(axis=1)
-lyriks_full = lyriks[is_full_lyriks]
+# LYRIKS + CSA
+psy_full = psy.dropna()
 
-csa = astral.iloc[:, astral.columns.str.startswith('CA')].copy()
-is_full_csa = ~csa.isna().any(axis=1)
-csa_full = csa[is_full_csa]
+# LYRIKS
+lyriks = psy.iloc[:, psy.columns.str.startswith('L')].copy()
+lyriks_full = lyriks.dropna()
+
+csa = psy.iloc[:, psy.columns.str.startswith('CA')].copy()
+csa_full = csa.dropna()
 csa_574 = csa.loc[psy_knn.index]
 csa_zero_574 = csa_574.fillna(0)
 csa_knn_574 = csa_knn.loc[psy_knn.index]
 
-uniprot_gene_map = {k: v for k, v in zip(data.index, data.Gene)}
-
-##### Check gene mapping #####
-
-# 'STAT1' in uniprot_gene_map.values()
-stat1_match = {k: v for k, v in uniprot_gene_map.items() if v == 'STAT1'}
-data.columns[~data.loc['P42224'].isna()]
+map_uniprot_gene = {k: v for k, v in zip(data.index, data.Gene)}
 
 ##### Check metadata coverage #####
 
@@ -109,15 +105,13 @@ for feature in metadata.columns:
 
 # L0073S_24, L0417S_24
 # L0567 has missing blood collection info
-lyriks_knn.columns[lyriks_knn.columns.str.startswith('L0073')]
-lyriks_knn.columns[lyriks_knn.columns.str.startswith('L0417')]
-lyriks_knn.columns[lyriks_knn.columns.str.startswith('L0365')]
+# lyriks_knn.columns[lyriks_knn.columns.str.startswith('L0073')]
+# lyriks_knn.columns[lyriks_knn.columns.str.startswith('L0417')]
+# lyriks_knn.columns[lyriks_knn.columns.str.startswith('L0365')]
 
 ##### Transform datetime data #####
 
-# TODO: Transform for plotting and modelling
-
-# TODO: Transform according to specific plot (earliest day is different for different subsets)
+# TODO: Transform according to specific model (earliest day is different for different subsets)
 metadata['run_days'] = (
     metadata.run_datetime - metadata.run_datetime.min()
 ) / np.timedelta64(1, "D")
@@ -137,7 +131,8 @@ metadata_csa_197 = metadata_csa.loc[~metadata_csa.index.isin(missing_samples)].c
 metadata_csa_197.loc['CA155', 'smoking'] = '0'
 
 metadata_csa_197['collection_days'] = (
-    metadata_csa_197.collection_datetime - metadata_csa_197.collection_datetime.min()
+    metadata_csa_197.collection_datetime -
+    metadata_csa_197.collection_datetime.min()
 ) / np.timedelta64(1, "D")
 metadata_csa_197['collection_date_sec'] = mdates.date2num(
     metadata_csa_197.collection_datetime
@@ -220,7 +215,7 @@ stats = pd.DataFrame(
     {'p': pvalues, 'q': qvalues},
     index=csa_full.index
 )
-genes = stats.index.map(uniprot_gene_map)
+genes = stats.index.map(map_uniprot_gene)
 stats.insert(0, 'Gene', genes)
 stats.sort_values('q', inplace=True)
 # filepath = 'tmp/astral/bm-schizo-stats.csv'
@@ -269,13 +264,10 @@ metadata_csa_plot = metadata.loc[csa_full.columns]
 #     metadata_csa_plot.collection_datetime - metadata_csa_plot.collection_datetime.min()
 # ) / np.timedelta64(1, "D")
 
-
-metadata.columns
-
 fig, ax = plt.subplots(figsize=(10, 8))
 ax = bp.plot_pca(
     ax,
-    lyriks_full,
+    lyriks_full.iloc[:,:20],
     metadata,
     colourbar=True,
     hue='run_datenum',
@@ -284,6 +276,8 @@ ax = bp.plot_pca(
     palette='viridis',
     legend=True
 )
+plt.show()
+
 filepath = 'tmp/astral/fig/pca_collection_extraction-lyriks.pdf'
 plt.savefig(filepath, dpi=300, bbox_inches='tight')
 plt.close()
@@ -414,7 +408,6 @@ for prot in prots_highcorr:
     plt.close()
     print(prot)
 
-
 metadata.columns
 metadata.group.value_counts()
 metadata_ctrl_mnt = metadata[
@@ -427,20 +420,12 @@ for name, df in metadata_ctrl_mnt.groupby('sn'):
     print(df.group.unique())
     print(df['extraction_date'].tolist())
 
-### OLINKS ###
-
-csa_full_gene = csa_full.rename(index=protein_gene_map)
-olink_stats_uniprot = olink_stats.rename(index=olink_uniprot_map)
-
-olink_stats_uniprot.index.isin(csa_full.index).sum() # 0/75 proteins in LINKS are in csa (249)
-olink_stats_uniprot.index.isin(csa.index).sum() # 1/75 proteins in LINKS are in csa (1757)
-csa_full.index.sort_values().tolist()
-olink_stats_uniprot.index.sort_values().tolist()
 
 ##### Biomarker identification #####
 
 ### Conversion signature ###
 
+# Detailed months to conversion
 filepath = 'data/tmp/cvt-fep_delta.csv'
 fep_delta = pd.read_csv(filepath, index_col=0)
 
@@ -448,111 +433,412 @@ metadata_fep_delta = metadata.join(
     fep_delta[['month_of_conversion', 'fep_delta']],
     how='left'
 )
-metadata_fep_delta['month_of_conversion'] = metadata_fep_delta.month_of_conversion.astype('Int64')
+metadata_fep_delta['month_of_conversion'] = (
+    metadata_fep_delta
+        .month_of_conversion
+        .astype('Int64')
+)
 
-lyriks_cvt = bp.subset(
+filepath = 'data/tmp/metadata-fep_delta.csv'
+metadata_fep_delta.to_csv(filepath, index=True)
+
+lyriks_int = lyriks_full.T.join(metadata_fep_delta, how='inner')
+
+# Identify the patient IDs of all timepoints from outliers
+outliers = lyriks_int.index[
+    (lyriks_int.extraction_date == '4/9/24') &
+    (lyriks_int.run_datetime > pd.to_datetime('2024-09-20 12:00:00'))
+]
+outliers_sn = outliers.str.split('_').str[0] # ['L0626C', 'L0018C']
+
+### Subset data ###
+
+# Raw data
+ctrl_raw = bp.subset(
     lyriks_full, metadata,
+    "group == 'Healthy control'"
+)
+ctrl_raw_int = ctrl_raw.T.join(metadata_fep_delta, how='inner')
+
+### Corrected data ###
+
+# ComBat corrected
+filepath = 'data/tmp/server/cmc-combat_0409.csv'
+cmc_combat_0409 = pd.read_csv(filepath, index_col=0)
+
+# Limma corrected
+filepath = 'data/tmp/server/cmc-limma_0409.csv'
+cmc_limma_0409 = pd.read_csv(filepath, index_col=0)
+
+cmc = cmc_combat_0409
+
+cvt = bp.subset(
+    cmc,
+    metadata,
     "(group == 'Convert') & (sn != 'L0073S')"
 )
-lyriks_cvt_int = lyriks_cvt.T.join(metadata_fep_delta, how='inner')
-
-# Standardise:
-# Option 1: According to FEP
-# Option 2: According to mean of patients 
-lyriks_fep = bp.subset(
-    lyriks_cvt, metadata,
-    "(timepoint  == 24) & (state == 'FEP')"
+cvt_int = cvt.T.join(metadata_fep_delta, how='inner')
+mnt = bp.subset(
+    cmc, metadata,
+    "group == 'Maintain'"
 )
-fep_means = lyriks_fep.mean(axis=1)
-corr_deltas = lyriks_fep.sub(fep_means, axis=0)
-corr_deltas.columns = [s[:6] for s in corr_deltas.columns.tolist()]
-print(corr_deltas.columns)
+mnt_int = mnt.T.join(metadata_fep_delta, how='inner')
+ctrl = bp.subset(
+    cmc, metadata,
+    "group == 'Healthy control'"
+)
+ctrl_int = ctrl.T.join(metadata_fep_delta, how='inner')
 
-# Match according to columns of lyriks_cvt (what patient they belong to)
-corr_matched = corr_deltas[lyriks_cvt.columns.str[:6]]
-# Convert column names back otherwise it will cause issues substracting
-corr_matched.columns = lyriks_cvt.columns
-lyriks_corr = lyriks_cvt - corr_matched
-lyriks_corr_int = lyriks_corr.T.join(metadata_fep_delta, how='inner')
-lyriks_ctrl = bp.subset(lyriks_full, metadata, "group == 'Healthy control'")
-lyriks_ctrl_int = lyriks_ctrl.T.join(metadata_fep_delta, how='inner')
 
-# Original
-# TODO: Calculate spearman correlation
-# TODO: Only plot scatterplot
+# Aggregate top upregulated and downupregulated proteins
+spearman_cvt = pd.DataFrame(
+    {'spearman_r': rhos},
+    index=cmc.index
+).sort_values(
+    'spearman_r', ascending=False, key=abs
+)
+
+spearman_top = spearman_cvt.head(23)
+print(spearman_top)
+
+top_up = spearman_top.index[spearman_top.spearman_r > 0]
+top_down = spearman_top.index[spearman_top.spearman_r <= 0]
+
+top_up.map(map_uniprot_gene)
+top_down.map(map_uniprot_gene)
+
+agg = metadata_fep_delta.loc[
+    cvt.columns,
+    ['sn', 'timepoint', 'fep_delta']
+].copy()
+agg['cvt_up'] = cvt.loc[top_up].sum(axis=0)
+agg['cvt_down'] = cvt.loc[top_down].sum(axis=0)
+agg_mnt = pd.DataFrame({
+    'mnt_up': mnt.loc[top_up].sum(axis=0),
+    'mnt_down': mnt.loc[top_down].sum(axis=0)
+}).join(
+    metadata_fep_delta[['sn', 'timepoint', 'extraction_date']],
+    how='left'
+)
+agg_ctrl = pd.DataFrame({
+    'ctrl_up': ctrl.loc[top_up].sum(axis=0),
+    'ctrl_down': ctrl.loc[top_down].sum(axis=0)
+}).join(
+    metadata_fep_delta[['sn', 'timepoint', 'extraction_date']],
+    how='left'
+)
+
+
+### Plot trajectories ###
+
+map_batch_color = {
+    '28/8/24': 'tab:blue',
+    '4/9/24': 'tab:orange',
+    '5/9/24': 'tab:green',
+}
+map_timepoint_marker = {
+    0: 'o',
+    12: 's',
+    24: '^'
+}
+
+# Plot convert patients
+rho = spearmanr(agg.fep_delta, agg.cvt_up).correlation
+fig, ax = plt.subplots(figsize=(6, 4))
+ax.scatter(
+    agg.fep_delta,
+    agg.cvt_up,
+    c='tab:green'
+)
+ax.set_title(f'Top 3 up-regulated (r = {rho:.2f})')
+ax.set_xlabel("Months to conversion")
+for _, patient in agg.sort_values("timepoint").groupby("sn"):
+    ax.plot(
+        patient.fep_delta,
+        patient.cvt_up,
+        color="gray", alpha=0.4, linewidth=1
+    )
+
+dirpath = 'tmp/astral/fig/trajectory/'
+filepath = os.path.join(
+    dirpath,
+    f'm2c_cvt-{int(abs(rho * 100)):02}-agg_up.pdf'
+)
+plt.savefig(filepath, dpi=300, bbox_inches='tight')
+print(filepath)
+
+# Plot maintain patients
+rho = spearmanr(agg_mnt.timepoint, agg_mnt.mnt_down).correlation
+fig, ax = plt.subplots(figsize=(6, 4))
+ax.scatter(
+    agg_mnt.timepoint,
+    agg_mnt.mnt_down,
+    c=agg_mnt.extraction_date.map(map_batch_color)
+)
+ax.set_title(f'Top 20 down-regulated (r = {rho:.2f})')
+ax.set_xlabel('Months to conversion')
+for _, patient in agg_mnt.sort_values('timepoint').groupby('sn'):
+    ax.plot(
+        patient.timepoint,
+        patient.mnt_down,
+        color='gray', alpha=0.4, linewidth=1
+    )
+
+dirpath = 'tmp/astral/fig/trajectory/'
+filepath = os.path.join(
+    dirpath,
+    f'm2c_mnt-{int(abs(rho * 100)):02}-agg_down.pdf'
+)
+plt.savefig(filepath, dpi=300, bbox_inches='tight')
+print(filepath)
+
+for prot in cmc_combat.index:
+    rho = spearmanr(
+        mnt_int.timepoint,
+        mnt_int.loc[:, prot]
+    ).correlation
+    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(12, 4))
+    ax1.scatter(
+        mnt_int.timepoint,
+        mnt_int.loc[:, prot],
+        c=mnt_int.extraction_date.map(map_batch_color)
+    )
+    ax1.set_title(f'{prot} (r = {rho:.2f})')
+    ax1.set_xlabel("Timepoint")
+    ax1.set_ylabel(prot)
+    for _, patient in mnt_int.sort_values("timepoint").groupby("sn"):
+        ax1.plot(
+            patient["timepoint"],
+            patient.loc[:, prot],
+            color="gray", alpha=0.4, linewidth=1
+        )
+    ax2.scatter(
+        ctrl_int["run_datenum"],
+        ctrl_int.loc[:, prot],
+        c=ctrl_int.extraction_date.map(map_batch_color)
+    )
+    ax2.set_xlabel("Run datetime")
+    # ax2.scatter(
+    #     ctrl_int["collection_datenum"],
+    #     ctrl_int.loc[:, prot],
+    #     c=ctrl_int.extraction_date.map(map_batch_color)
+    # )
+    # ax2.set_xlabel("Collection datetime")
+    dirpath = 'tmp/astral/fig/trajectory/mnt/run-limma/'
+    filepath = dirpath + f'mnt_m2c-{int(abs(rho * 100)):02}-{prot}-rundate.pdf'
+    plt.savefig(filepath, dpi=300, bbox_inches='tight')
+    print(filepath)
+
+# Plot control patients
+
 for prot in lyriks_full.index:
     rho = spearmanr(
-        lyriks_cvt_int.fep_delta,
-        lyriks_cvt_int.loc[:, prot]
+        ctrl_raw_int.timepoint,
+        ctrl_raw_int.loc[:, prot]
+    ).correlation
+    fig, (ax1, ax2, ax3) = plt.subplots(1, 3, figsize=(18, 4))
+    ax1.scatter(
+        ctrl_raw_int.timepoint,
+        ctrl_raw_int.loc[:, prot],
+        c=ctrl_raw_int.extraction_date.map(map_batch_color)
+    )
+    ax1.set_title(f'{prot} (r = {rho:.2f}) - Control')
+    ax1.set_xlabel("Timepoint")
+    ax1.set_ylabel(prot)
+    for _, patient in ctrl_raw_int.sort_values("timepoint").groupby("sn"):
+        ax1.plot(
+            patient["timepoint"],
+            patient.loc[:, prot],
+            color="gray", alpha=0.4, linewidth=1
+        )
+    handles = []
+    for g, subdf in ctrl_raw_int.groupby("timepoint"):
+        print(g)
+        h = ax2.scatter(
+            subdf["run_datenum"],
+            subdf.loc[:, prot],
+            c=subdf.extraction_date.map(map_batch_color),
+            marker=map_timepoint_marker[g],
+            label=str(g)
+        )
+        handles.append(h)
+    ax2.set_xlabel("Run time")
+    ax2.legend(handles=handles, loc="best")
+    for g, subdf in ctrl_raw_int.groupby("timepoint"):
+        print(g)
+        h = ax3.scatter(
+            subdf["collection_datenum"],
+            subdf.loc[:, prot],
+            c=subdf.extraction_date.map(map_batch_color),
+            marker=map_timepoint_marker[g],
+            label=str(g)
+        )
+        handles.append(h)
+    ax3.set_xlabel("Collection time")
+    ax3.legend(handles=handles, loc="best")
+    dirpath = 'tmp/astral/fig/trajectory/ctrl/raw/'
+    filepath = os.path.join(
+        dirpath,
+        f'ctrl_m2c-{int(abs(rho * 100)):02}-{prot}.pdf'
+    )
+    plt.savefig(filepath, dpi=300, bbox_inches='tight')
+    print(filepath)
+
+
+### Plot: Corrected data ###
+
+for prot in cmc.index:
+    rho = spearmanr(
+        cvt_int.fep_delta,
+        cvt_int.loc[:, prot]
     ).correlation
     fig, ax = plt.subplots(figsize=(6, 4))
     ax.scatter(
-        lyriks_cvt_int.fep_delta,
-        lyriks_cvt_int.loc[:, prot],
-        c=pd.Categorical(lyriks_cvt_int.extraction_date).codes
+        cvt_int.fep_delta,
+        cvt_int.loc[:, prot],
+        c=cvt_int.extraction_date.map(map_batch_color)
     )
-    ax.set_title(f'{prot} (r = {rho:.2f})')
+    ax.set_title(f'{prot} (r = {rho:.2f}) - Convert')
     ax.set_xlabel("Months to conversion")
     ax.set_ylabel(prot)
-    for _, patient in lyriks_cvt_int.sort_values("timepoint").groupby("sn"):
+    for _, patient in cvt_int.sort_values("timepoint").groupby("sn"):
         ax.plot(
             patient["fep_delta"],
             patient.loc[:, prot],
             color="gray", alpha=0.4, linewidth=1
         )
-    # ax2.scatter(
-    #     lyriks_ctrl_int["run_datenum"],
-    #     lyriks_ctrl_int.loc[:, prot],
-    #     c=pd.Categorical(lyriks_ctrl_int.extraction_date).codes
-    # )
-    # ax2.set_xlabel("Run datetime")
-    # ax3.scatter(
-    #     lyriks_ctrl_int["collection_datenum"],
-    #     lyriks_ctrl_int.loc[:, prot],
-    #     c=pd.Categorical(lyriks_ctrl_int.extraction_date).codes
-    # )
-    # ax3.set_xlabel("Collection datetime")
-    filepath = f'tmp/astral/fig/cvt_m2c-{int(abs(rho * 100)):02}-{prot}.pdf'
+    dirpath = 'tmp/astral/fig/trajectory/cvt/limma_0409/'
+    filepath = os.path.join(
+        dirpath,
+        f'm2c-cvt-{int(abs(rho * 100)):02}-{prot}.pdf'
+    )
     plt.savefig(filepath, dpi=300, bbox_inches='tight')
     print(filepath)
 
-
-# Corrected
-for prot in lyriks_full.index:
+# Maintain
+for prot in cmc.index:
     rho = spearmanr(
-        lyriks_corr_int.fep_delta,
-        lyriks_corr_int.loc[:, prot]
+        mnt_int.timepoint,
+        mnt_int.loc[:, prot]
     ).correlation
-    fig, ax = plt.subplots(figsize=(6, 4))
-    ax.scatter(
-        lyriks_corr_int.fep_delta,
-        lyriks_corr_int.loc[:, prot],
-        c=pd.Categorical(lyriks_corr_int.extraction_date).codes
+    fig, (ax1, ax2, ax3) = plt.subplots(1, 3, figsize=(18, 4))
+    ax1.scatter(
+        mnt_int.timepoint,
+        mnt_int.loc[:, prot],
+        c=mnt_int.extraction_date.map(map_batch_color)
     )
-    ax.set_title(f'{prot} (r = {rho:.2f})')
-    ax.set_xlabel("Months to conversion")
-    ax.set_ylabel(prot)
-    for _, patient in lyriks_corr_int.sort_values("timepoint").groupby("sn"):
-        ax.plot(
-            patient["fep_delta"],
+    ax1.set_title(f'{prot} (r = {rho:.2f}) - Maintain')
+    ax1.set_xlabel("Timepoint")
+    ax1.set_ylabel(prot)
+    for _, patient in mnt_int.sort_values("timepoint").groupby("sn"):
+        ax1.plot(
+            patient["timepoint"],
             patient.loc[:, prot],
             color="gray", alpha=0.4, linewidth=1
         )
-    # ax2.scatter(
-    #     lyriks_ctrl_int["run_datenum"],
-    #     lyriks_ctrl_int.loc[:, prot],
-    #     c=pd.Categorical(lyriks_ctrl_int.extraction_date).codes
-    # )
-    # ax2.set_xlabel("Run datetime")
-    # ax3.scatter(
-    #     lyriks_ctrl_int["collection_datenum"],
-    #     lyriks_ctrl_int.loc[:, prot],
-    #     c=pd.Categorical(lyriks_ctrl_int.extraction_date).codes
-    # )
-    # ax3.set_xlabel("Collection datetime")
-    filepath = f'tmp/astral/fig/m2c/trajectory/corr/cvt_m2c-corr-{int(abs(rho * 100)):02}-{prot}.pdf'
+    handles = []
+    for g, subdf in mnt_int.groupby("timepoint"):
+        h = ax2.scatter(
+            subdf["run_datenum"],
+            subdf.loc[:, prot],
+            c=subdf.extraction_date.map(map_batch_color),
+            marker=map_timepoint_marker[g],
+            label=str(g)
+        )
+        handles.append(h)
+    ax2.set_xlabel("Run time")
+    ax2.legend(handles=handles, loc="best")
+    handles = []
+    for g, subdf in mnt_int.groupby("timepoint"):
+        h = ax3.scatter(
+            subdf["collection_datenum"],
+            subdf.loc[:, prot],
+            c=subdf.extraction_date.map(map_batch_color),
+            marker=map_timepoint_marker[g],
+            label=str(g)
+        )
+        handles.append(h)
+    ax3.set_xlabel("Collection time")
+    ax3.legend(handles=handles, loc="best")
+    dirpath = 'tmp/astral/fig/trajectory/mnt/limma_0409/'
+    filepath = os.path.join(
+        dirpath,
+        f'm2c_mnt-{int(abs(rho * 100)):02}-{prot}.pdf'
+    )
     plt.savefig(filepath, dpi=300, bbox_inches='tight')
     print(filepath)
+
+# Control
+for prot in cmc.index:
+    rho = spearmanr(
+        ctrl_int.timepoint,
+        ctrl_int.loc[:, prot]
+    ).correlation
+    fig, (ax1, ax2, ax3) = plt.subplots(1, 3, figsize=(18, 4))
+    ax1.scatter(
+        ctrl_int.timepoint,
+        ctrl_int.loc[:, prot],
+        c=ctrl_int.extraction_date.map(map_batch_color)
+    )
+    ax1.set_title(f'{prot} (r = {rho:.2f}) - Control')
+    ax1.set_xlabel("Timepoint")
+    ax1.set_ylabel(prot)
+    for _, patient in ctrl_int.sort_values("timepoint").groupby("sn"):
+        ax1.plot(
+            patient["timepoint"],
+            patient.loc[:, prot],
+            color="gray", alpha=0.4, linewidth=1
+        )
+    handles = []
+    for g, subdf in ctrl_int.groupby("timepoint"):
+        h = ax2.scatter(
+            subdf["run_datenum"],
+            subdf.loc[:, prot],
+            c=subdf.extraction_date.map(map_batch_color),
+            marker=map_timepoint_marker[g],
+            label=str(g)
+        )
+        handles.append(h)
+    ax2.set_xlabel("Run time")
+    ax2.legend(handles=handles, loc="best")
+    handles = []
+    for g, subdf in ctrl_int.groupby("timepoint"):
+        h = ax3.scatter(
+            subdf["collection_datenum"],
+            subdf.loc[:, prot],
+            c=subdf.extraction_date.map(map_batch_color),
+            marker=map_timepoint_marker[g],
+            label=str(g)
+        )
+        handles.append(h)
+    ax3.set_xlabel("Collection time")
+    ax3.legend(handles=handles, loc="best")
+    dirpath = 'tmp/astral/fig/trajectory/ctrl/limma_0409/'
+    filepath = os.path.join(
+        dirpath,
+        f'm2c_ctrl-{int(abs(rho * 100)):02}-{prot}.pdf'
+    )
+    plt.savefig(filepath, dpi=300, bbox_inches='tight')
+    print(filepath)
+
+
+# investigate: timepoint v.s. run time
+metadata.columns
+md_ctrl = metadata.loc[
+    (metadata.group == 'Healthy control') &
+    (metadata.study == 'LYRIKS'),
+    ['sn', 'group', 'timepoint', 'run_datenum']
+]
+
+for tp, subdf in md_ctrl.groupby("timepoint"):
+    plt.hist(subdf["run_datenum"], bins=20, alpha=0.5, label=str(tp))
+
+plt.xlabel("run_datenum")
+plt.ylabel("count")
+plt.legend(title="timepoint")
+plt.show()
+
+
 
 ### TODO: Paired t-test (against zero)
 
@@ -574,7 +860,7 @@ ttest = ttest_rel(
 )
 
 conversion_stats = pd.DataFrame({
-    'gene': lyriks_full.index.map(uniprot_gene_map),
+    'gene': lyriks_full.index.map(map_uniprot_gene),
     'pvalue': ttest.pvalue,
     'qvalue': multipletests(ttest.pvalue, alpha=0.05, method='fdr_bh')[1],
     't': ttest.statistic
@@ -775,3 +1061,31 @@ plt.close()
 # 
 # 
 # # TODO: Hierarchical clustering plots (CSA) and LYRIKS batch ()
+
+# ### Correct for patient-level effects
+# lyriks_fep = bp.subset(
+#     lyriks_cvt, metadata,
+#     "(timepoint  == 24) & (state == 'FEP')"
+# )
+# fep_means = lyriks_fep.mean(axis=1)
+# corr_deltas = lyriks_fep.sub(fep_means, axis=0)
+# corr_deltas.columns = [s[:6] for s in corr_deltas.columns.tolist()]
+# print(corr_deltas.columns)
+
+# # Match according to columns of lyriks_cvt (what patient they belong to)
+# corr_matched = corr_deltas[lyriks_cvt.columns.str[:6]]
+# # Convert column names back otherwise it will cause issues substracting
+# corr_matched.columns = lyriks_cvt.columns
+# lyriks_corr = lyriks_cvt - corr_matched
+# lyriks_corr_int = lyriks_corr.T.join(metadata_fep_delta, how='inner')
+
+
+### OLINKS ###
+
+csa_full_gene = csa_full.rename(index=map_uniprot_gene)
+olink_stats_uniprot = olink_stats.rename(index=map_olink_uniprot)
+
+olink_stats_uniprot.index.isin(csa_full.index).sum() # 0/75 proteins in LINKS are in csa (249)
+olink_stats_uniprot.index.isin(csa.index).sum() # 1/75 proteins in LINKS are in csa (1757)
+csa_full.index.sort_values().tolist()
+olink_stats_uniprot.index.sort_values().tolist(
