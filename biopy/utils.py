@@ -95,7 +95,9 @@ def plot_pca_old(ax, x, metadata, colourbar=False, **kwargs):
     return ax
 
 
-def plot_pca(ax, x, metadata, colourbar=False, **kwargs):
+def plot_pca(
+    ax, x, metadata, colourbar=False, return_fig=True, **kwargs
+):
     '''PCA plot for visualisation of batch effects.'''
     pca = PCA(n_components=2)
     z = pca.fit_transform(x.transpose())
@@ -192,10 +194,16 @@ def plot_pca(ax, x, metadata, colourbar=False, **kwargs):
         if 'date' in hue:
             cbar.ax.yaxis.set_major_formatter(mdates.DateFormatter('%Y-%m-%d'))
 
-    return ax
+    if return_fig:
+        return ax
+    else:
+        print('Returning both axis and PCA coordinates for further use...')
+        return (ax, z)
 
 
-def plot_umap(ax, x, metadata, colourbar=False, **kwargs):
+def plot_umap(
+    ax, x, metadata, colourbar=False, return_fig=False, **kwargs
+):
     reducer = umap.UMAP(n_components=2, random_state=42)
     z = reducer.fit_transform(x.transpose())
     z = pd.DataFrame(
@@ -290,4 +298,8 @@ def plot_umap(ax, x, metadata, colourbar=False, **kwargs):
         if 'date' in hue:
             cbar.ax.yaxis.set_major_formatter(mdates.DateFormatter('%Y-%m-%d'))
 
-    return ax
+    if return_fig:
+        return ax
+    else:
+        print('Returning both axis and PCA coordinates for further use...')
+        return (ax, z)
